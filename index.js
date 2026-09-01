@@ -31,7 +31,12 @@ client.on('interactionCreate', async (interaction) => {
     const comment = rawComment ? truncateText(rawComment, 100) : null;
 
     try {
-        const targetMessage = await interaction.channel.messages.fetch(messageId);
+        let targetMessage;
+        try {
+            targetMessage = await interaction.channel.messages.fetch(messageId);
+        } catch (error) {
+            return interaction.editReply({ content: 'Invalid message ID. Please check the message ID and try again.', ephemeral: true });
+        }
         if (!targetMessage) {
             return interaction.editReply({ content: 'Message not found. Please check the message ID and try again.', ephemeral: true });
         }

@@ -1,0 +1,1 @@
+this is a discord bot with A SINGLE COMMAND, this should be self explainatory.

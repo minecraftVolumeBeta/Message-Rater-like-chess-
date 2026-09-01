@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { REST, Routes, SlashCommandBuilder, ApplicationIntegrationType, InteractionContextType } = require('discord.js');
 
 const ratingChoices = [
     { name: 'criminal (🔒)', value: 'criminal' },
@@ -22,6 +22,15 @@ const commands = [
     new SlashCommandBuilder()
         .setName('evaluate')
         .setDescription('Evaluate a message like a chess.com move')
+        .setIntegrationTypes([
+            ApplicationIntegrationType.GuildInstall,
+            ApplicationIntegrationType.UserInstall
+        ])
+        .setContexts([
+            InteractionContextType.Guild,
+            InteractionContextType.BotDM,
+            InteractionContextType.PrivateChannel
+        ])
         .addStringOption(option =>
             option.setName('message_id')
                 .setDescription('The ID of the target message')
