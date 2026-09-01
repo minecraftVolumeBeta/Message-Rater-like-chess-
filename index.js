@@ -1,6 +1,14 @@
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, AttachmentBuilder } = require('discord.js');
+const { 
+  Client, 
+  GatewayIntentBits, 
+  AttachmentBuilder, 
+  ModalBuilder, 
+  TextInputBuilder, 
+  TextInputStyle, 
+  ActionRowBuilder 
+} = require('discord.js');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const fs = require('fs');
 const path = require('path');
@@ -12,6 +20,8 @@ const client = new Client({
     GatewayIntentBits.MessageContent
   ]
 });
+
+const targetMessageCache = new Map();
 
 function truncateText(str, maxLength) {
   if (!str || str.length <= maxLength) return str;
@@ -25,32 +35,76 @@ client.on('ready', () => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand()) return;
+  
+  if (interaction.isMessageContextMenuCommand() && interaction.commandName === 'Evaluate Message') {
+    const targetMsg = interaction.targetMessage;
+    targetMessageCache.set(interaction.user.id, targetMsg);
 
-  await interaction.deferReply();
+    const modal = new ModalBuilder()
+      .setCustomId('evaluate_modal')
+      .setTitle('Evaluate Message');
+
+    const ratingInput = new TextInputBuilder()
+      .setCustomId('rating_input')
+      .setLabel('Rating')
+      .setPlaceholder('good, blunder, brilliant, mistake, criminal, etc.')
+      .setValue('good')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const reasonInput = new TextInputBuilder()
+      .setCustomId('reason_input')
+      .setLabel('Reason (Optional)')
+      .setPlaceholder('Why this evaluation?')
+      .setStyle(TextInputStyle.Short)
+      .setMaxLength(100)
+      .setRequired(false);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(ratingInput),
+      new ActionRowBuilder().addComponents(reasonInput)
+    );
+
+    await interaction.showModal(modal);
+    return;
+  }
 
   let targetMessage;
   let rating = 'good';
   let reason = null;
 
-  try {
-    if (interaction.isMessageContextMenuCommand()) {
-      targetMessage = interaction.targetMessage;
-    } else if (interaction.isChatInputCommand() && interaction.commandName === 'evaluate') {
-      const messageId = interaction.options.getString('message_id');
-      rating = interaction.options.getString('rating');
-      const rawReason = interaction.options.getString('reason');
-      reason = rawReason ? truncateText(rawReason, 100) : null;
+  if (interaction.isModalSubmit() && interaction.customId === 'evaluate_modal') {
+    await interaction.deferReply();
+    targetMessage = targetMessageCache.get(interaction.user.id);
+    targetMessageCache.delete(interaction.user.id);
 
-      try {
-        targetMessage = await interaction.channel.messages.fetch(messageId);
-      } catch (error) {
-        return interaction.editReply('Invalid message ID or cannot fetch messages in this channel. Try Right-Clicking the message -> Apps -> Evaluate Message instead.');
-      }
+    const rawRating = interaction.fields.getTextInputValue('rating_input').toLowerCase().trim();
+    const rawReason = interaction.fields.getTextInputValue('reason_input');
+
+    const validRatings = ['criminal', 'blunder', 'mistake', 'inaccuracy', 'good', 'excellent', 'best', 'book', 'great', 'brilliant', 'trilliant', 'trophy'];
+    rating = validRatings.includes(rawRating) ? rawRating : 'good';
+    reason = rawReason ? truncateText(rawReason, 100) : null;
+
+  } else if (interaction.isChatInputCommand() && interaction.commandName === 'evaluate') {
+    await interaction.deferReply();
+
+    const messageId = interaction.options.getString('message_id');
+    rating = interaction.options.getString('rating');
+    const rawReason = interaction.options.getString('reason');
+    reason = rawReason ? truncateText(rawReason, 100) : null;
+
+    try {
+      targetMessage = await interaction.channel.messages.fetch(messageId);
+    } catch (error) {
+      return interaction.editReply('Invalid message ID or cannot fetch messages in this channel.');
     }
+  } else {
+    return;
+  }
 
+  try {
     if (!targetMessage) {
-      return interaction.editReply('Message not found. Please check the message ID and try again.');
+      return interaction.editReply('Target message missing or expired. Please try again.');
     }
 
     if (targetMessage.attachments && targetMessage.attachments.size > 0) {
@@ -87,6 +141,7 @@ client.on('interactionCreate', async (interaction) => {
     ctx.drawImage(avatarImage, avatarX, avatarY, avatarSize, avatarSize);
     ctx.restore();
 
+    // Position Right Column (Badge Icon + Reason)
     const iconSize = 90;
     const rightSectionWidth = 180;
     const rightSectionX = canvasWidth - 50 - rightSectionWidth;
@@ -165,7 +220,7 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.editReply({ files: [attachment] });
 
   } catch (err) {
-    console.error('Unhandled error in interaction:', err);
+    console.error('Unhandled error:', err);
     await interaction.editReply('An error occurred while processing the evaluation.');
   }
 });
